@@ -37,8 +37,47 @@ Unix 서버 점검 raw data 를 받아 보안 취약점을 자동 진단하고, 
 
 ### raw data 형식
 
-xlsx 첫 번째 시트, 1행 헤더, 다음 컬럼 포함:
-`Hostname, OS 정보, Code, Name, Result, Data, Status_Data, criteria`
+xlsx 첫 번째 시트, 1행을 헤더로 사용. 다음 8개 컬럼을 포함해야 한다:
+
+| 컬럼 | 의미 |
+|------|------|
+| `Hostname` | 점검 대상 서버 이름 |
+| `OS 정보` | 운영체제 종류 (RHEL, Ubuntu, Solaris, AIX 등) — 이 열에서 OS 자동 감지 |
+| `Code` | KISA 점검 항목 코드 (예: `U-01`) |
+| `Name` | 점검 항목 이름 |
+| `Result` | 사전 점검 결과 (스캐너/사람이 미리 본 결과, 비어있어도 됨) |
+| `Data` | 실제 확인된 설정값·명령어 출력 (판단의 핵심 근거) |
+| `Status_Data` | 보조 상태 정보 (파일 존재 여부, 권한, 부가 출력 등) |
+| `criteria` | 판단 기준 (KISA 가이드 인용) |
+
+**예시 (3개 행)**:
+
+| Hostname | OS 정보 | Code | Name | Result | Data | Status_Data | criteria |
+|----------|---------|------|------|--------|------|-------------|----------|
+| host1 | RHEL 8.6 | U-01 | root 원격접속 제한 | 취약 | `PermitRootLogin yes` | 파일 존재 | `PermitRootLogin no` 면 양호 |
+| host1 | RHEL 8.6 | U-02 | 패스워드 복잡성 | 취약 | `PASS_MIN_LEN 6` | /etc/login.defs | 8 이상이면 양호 |
+| host2 | Ubuntu 22.04 | U-01 | root 원격접속 제한 | 양호 | `PermitRootLogin prohibit-password` | 파일 존재 | `PermitRootLogin no` 면 양호 |
+
+> `Data` 열은 줄바꿈 포함 멀티라인 텍스트일 수 있다 (예: `cat /etc/ssh/sshd_config` 전체 출력 등).
+
+---
+
+### 출력 예시
+
+위 입력의 3행이 다음과 같이 변환된다 — 원본 8열은 그대로 두고, 오른쪽에 4열 추가:
+
+| Hostname | ... (원본 7열 생략) ... | criteria | 판단결과 | 현황 | 판단근거 | 조치가이드 |
+|----------|---|---|---------|------|---------|----------|
+| host1 | ... | `PermitRootLogin no` 면 양호 | **취약** | root 원격 접속이 허용되어 있으므로 취약 | [확인값] `PermitRootLogin yes`<br>[기준] `PermitRootLogin no` 여야 양호<br>[판단] `yes` ≠ `no` → 취약 | ※ `/etc/ssh/sshd_config` 의 `PermitRootLogin` 을 `no` 로 설정 권고 |
+| host1 | ... | 8 이상이면 양호 | **취약** | 패스워드 최소 길이가 기준 미만이므로 취약 | [확인값] `PASS_MIN_LEN 6`<br>[기준] 8 이상이어야 양호<br>[판단] 6 < 8 → 취약 | ※ `/etc/login.defs` 의 `PASS_MIN_LEN` 을 8 이상으로 설정 권고 |
+| host2 | ... | `PermitRootLogin no` 면 양호 | **양호** | root 원격 접속이 비밀번호 인증으로 제한되어 있으므로 양호 | [확인값] `PermitRootLogin prohibit-password`<br>[기준] `no` 또는 동등 수준 제한이면 양호<br>[판단] `prohibit-password` 는 비밀번호 로그인 차단으로 동등 수준 → 양호 | (빈칸) |
+
+**각 열의 작성 규칙**:
+
+- **판단결과**: 양호 / 취약 / 확인필요 / N/A 중 하나
+- **현황**: `~하므로 양호 / ~하므로 취약 / ~하므로 현장 재확인 요청` 형식의 1~2문장
+- **판단근거**: `[확인값] [기준] [판단]` 3단 형식으로 raw data 실제 값과 기준값을 함께 명시
+- **조치가이드**: 양호·N/A 면 빈칸, 취약·확인필요 면 `※` 로 시작하는 포괄적 조치 권고
 
 ---
 
